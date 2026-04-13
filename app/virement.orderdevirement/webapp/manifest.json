@@ -158,7 +158,13 @@
                 "@com.sap.vocabularies.UI.v1.Identification": {
                   "actions": {
                     "DataFieldForAction::virementSrv.print": {
-                      "press": "virement.orderdevirement.ext.actions.Print.onPrint"
+                      "press": "virement.orderdevirement.ext.actions.Print.onPrint",
+                      "visible": false
+                    },
+                    "CustomPrintPDF": {
+                      "press": "virement.orderdevirement.ext.actions.Print.onPrint",
+                      "text": "Print",
+                      "visible": true
                     }
                   }
                 }

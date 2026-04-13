@@ -2,15 +2,23 @@
 const cds = require('@sap/cds')
 const PDFDocument = require('pdfkit')
 
-// ── French amount-to-words (Tunisian Dinar) ────────────────────────────────
+// ── European amount format: 2500.500 → "2.500,500" ────────────────────────
+function formatAmount(num) {
+    const fixed = parseFloat(num || 0).toFixed(3)
+    const [intStr, decStr] = fixed.split('.')
+    const intFormatted = intStr.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+    return intFormatted + ',' + decStr
+}
+
+// ── French amount-to-words: "DEUX MILLE CINQ CENTS DINARS 500 MILLIMES" ──
 function amountToWords(amount) {
     if (!amount && amount !== 0) return ''
     const num = parseFloat(amount)
     if (isNaN(num)) return ''
 
-    const parts = num.toFixed(3).split('.')
-    const intPart = parseInt(parts[0], 10)
-    const decPart = parseInt(parts[1], 10)
+    const fixed = num.toFixed(3).split('.')
+    const intPart = parseInt(fixed[0], 10)
+    const decPart = parseInt(fixed[1], 10)
 
     const ones = [
         '', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf',
@@ -25,8 +33,8 @@ function amountToWords(amount) {
         if (t === 7) return 'soixante-' + ones[10 + o]
         if (t === 8) return o === 0 ? 'quatre-vingts' : 'quatre-vingt-' + ones[o]
         if (t === 9) return 'quatre-vingt-' + ones[10 + o]
-        const tenWords = ['', 'dix', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante']
-        return tenWords[t] + (o === 1 ? '-et-un' : o ? '-' + ones[o] : '')
+        const tens = ['', 'dix', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante']
+        return tens[t] + (o === 1 ? '-et-un' : o ? '-' + ones[o] : '')
     }
 
     function belowThousand(n) {
@@ -34,8 +42,8 @@ function amountToWords(amount) {
         if (n < 100) return belowHundred(n)
         const h = Math.floor(n / 100)
         const r = n % 100
-        const cent = (h > 1 ? ones[h] + '-' : '') + 'cent' + (r === 0 && h > 1 ? 's' : '')
-        return cent + (r ? '-' + belowHundred(r) : '')
+        const cent = (h > 1 ? ones[h] + ' ' : '') + 'cent' + (r === 0 && h > 1 ? 's' : '')
+        return r ? cent + ' ' + belowHundred(r) : cent
     }
 
     function convert(n) {
@@ -55,80 +63,99 @@ function amountToWords(amount) {
         return res.trim()
     }
 
-    let words = convert(intPart) + (intPart > 1 ? ' dinars' : ' dinar')
+    // Dinars in French words (uppercase) + millimes as a number
+    let words = convert(intPart).toUpperCase() + (intPart > 1 ? ' DINARS' : ' DINAR')
     if (decPart > 0) {
-        words += ' et ' + convert(decPart) + (decPart > 1 ? ' millimes' : ' millime')
+        words += ' ' + decPart + ' MILLIMES'
     }
-    return words.charAt(0).toUpperCase() + words.slice(1)
+    return words
 }
 
-// ── Build PDF matching "Ordre de Virement" layout ─────────────────────────
+// ── Build PDF matching the reference "Ordre de Virement" layout ───────────
 function buildPDF(row, doc) {
     const PAGE_W = doc.page.width   // 595.28 pt for A4
     const MARGIN = 50
     const W = PAGE_W - 2 * MARGIN   // ≈ 495 pt
 
-    const amount = parseFloat(row.amount || 0)
-    const amountStr = amount.toFixed(3)
-    const bankName = row.payingBank || row.bankName || ''
+    const amount      = parseFloat(row.amount || 0)
+    const amountStr   = formatAmount(amount)
+    const amountWords = amountToWords(amount)
+    const bankName    = row.payingBank || row.bankName || ''
 
-    // ── Page header ──────────────────────────────────────────────────────────
+    // ── Date & Page (top right, italic) ──────────────────────────────────
     const now = new Date()
     const p = n => String(n).padStart(2, '0')
     const dateStr = `${p(now.getDate())}/${p(now.getMonth() + 1)}/${now.getFullYear()} ` +
                     `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`
 
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('black')
-       .text(row.companyName || '', MARGIN, 40)
-    doc.font('Helvetica').fontSize(10)
-       .text(dateStr, MARGIN, 40, { width: W, align: 'right' })
-    doc.font('Helvetica').fontSize(10)
-       .text('Page - 1', MARGIN, 56, { width: W, align: 'center' })
+    doc.font('Helvetica-Oblique').fontSize(10).fillColor('black')
+       .text(dateStr, MARGIN, 28, { width: W, align: 'right' })
+    doc.font('Helvetica-Oblique').fontSize(10)
+       .text('Page -    1', MARGIN, 42, { width: W, align: 'right' })
 
-    // ── Title ────────────────────────────────────────────────────────────────
-    doc.font('Helvetica-Bold').fontSize(14)
-       .text('ORDRE DE VIREMENT', MARGIN, 82, { width: W, align: 'center', underline: true })
+    // ── Company name (bold italic, centered) ──────────────────────────────
+    doc.font('Helvetica-BoldOblique').fontSize(10).fillColor('black')
+       .text('Sté Délice des Eaux Minérales', MARGIN, 28, { width: W, align: 'center' })
 
-    // ── Addressee block ───────────────────────────────────────────────────────
+    // ── "ORDRE DE VIREMENT" (bold italic, centered) ───────────────────────
+    doc.font('Helvetica-BoldOblique').fontSize(12).fillColor('black')
+       .text('ORDRE DE VIREMENT', MARGIN, 44, { width: W, align: 'center' })
+
+    // ── Separator ─────────────────────────────────────────────────────────
+    //doc.moveTo(MARGIN, 64).lineTo(MARGIN + W, 64).lineWidth(0.75).stroke('black')
+
+    // ── Addressee block ───────────────────────────────────────────────────
+    let y = 120
+    doc.font('Helvetica').fontSize(10).fillColor('black')
+       .text('A Monsieur le directeur de la ', MARGIN, y, { continued: true })
+    doc.font('Helvetica-Bold').text(bankName)
+
+    y = doc.y + 4
     doc.font('Helvetica').fontSize(10)
-       .text(`A Monsieur le directeur de la ${bankName}`, MARGIN, 118)
-       .text('Veuillez effectuer les virements suivants :', MARGIN, 134)
+       .text('Par le débit de notre compte N°  ', MARGIN, y, { continued: true })
+    doc.font('Helvetica-Bold').text((row.bankNumber || '') + '  ', { continued: true })
+    doc.font('Helvetica-Bold').text(row.bankAccount || '', { continued: true })
+    doc.font('Helvetica').text('  ,veuillez effectuer les virements suivants :')
+
+    y = doc.y + 22
     doc.font('Helvetica-Bold').fontSize(10)
-       .text(`Banque : ${bankName}`, MARGIN, 152)
+       .text('Banque :  ', MARGIN, y, { continued: true })
+    doc.font('Helvetica').text((row.bankControlKey ? row.bankControlKey + '  ' : ''), { continued: true })
+    doc.font('Helvetica-Bold').text(bankName)
 
-    // ── Table ─────────────────────────────────────────────────────────────────
-    const TY = 172                          // table top Y
+    // ── Table ─────────────────────────────────────────────────────────────
+    const TY = doc.y + 14
     const COL_W = [75, 110, 155, 90, 65]   // sum = 495 = W
-    const HDR_H = 28
-    const ROW_H = 20
+    const HDR_H = 22
+    const ROW_H = 18
 
-    // column left-edge x positions
     const cx = []
     let xPos = MARGIN
     for (const w of COL_W) { cx.push(xPos); xPos += w }
 
-    // header background (grey fill + black stroke)
-    doc.rect(MARGIN, TY, W, HDR_H).fillAndStroke('#d0d0d0', 'black')
+    // Top border
+    //doc.moveTo(MARGIN, TY).lineTo(MARGIN + W, TY).lineWidth(0.75).stroke('black')
 
-    // outer border of the whole table
-    doc.rect(MARGIN, TY, W, HDR_H + ROW_H).stroke('black')
+    // Thick separator between header and data (double-line effect)
+    doc.moveTo(MARGIN, TY + HDR_H - 1).lineTo(MARGIN + W, TY + HDR_H - 1).lineWidth(0.5).stroke('black')
+    doc.moveTo(MARGIN, TY + HDR_H + 1).lineTo(MARGIN + W, TY + HDR_H + 1).lineWidth(0.5).stroke('black')
 
-    // header / data separator
-    doc.moveTo(MARGIN, TY + HDR_H).lineTo(MARGIN + W, TY + HDR_H).stroke('black')
+    // Bottom border
+    //doc.moveTo(MARGIN, TY + HDR_H + ROW_H).lineTo(MARGIN + W, TY + HDR_H + ROW_H).lineWidth(0.75).stroke('black')
 
-    // vertical column dividers
+    // Vertical column dividers (span full table height)
     cx.slice(1).forEach(x => {
-        doc.moveTo(x, TY).lineTo(x, TY + HDR_H + ROW_H).stroke('black')
+        doc.moveTo(x, TY).lineTo(x, TY + HDR_H + ROW_H).lineWidth(0.5).stroke('black')
     })
 
-    // header labels
-    const headers = ['Code\nBeneficiaire', 'Libelle\nBeneficiaire', 'RIB', 'Banque', 'Montant\n(DTN)']
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor('black')
+    // Header labels (regular weight, centred)
+    const headers = ['Code\nBénéficiare', 'Libelle\nBénéficiaire', 'RIB', 'Banque', 'Montant\n(DTN)']
+    doc.font('Helvetica').fontSize(8).fillColor('black')
     headers.forEach((h, i) => {
-        doc.text(h, cx[i] + 3, TY + 5, { width: COL_W[i] - 6, align: 'center', lineGap: 0 })
+        doc.text(h, cx[i] + 3, TY + 4, { width: COL_W[i] - 6, align: 'center', lineGap: 0 })
     })
 
-    // data cells
+    // Data cells (regular weight)
     const cells = [
         row.beneficiaryCode || '',
         row.beneficiaryName || '',
@@ -138,43 +165,51 @@ function buildPDF(row, doc) {
     ]
     doc.font('Helvetica').fontSize(8).fillColor('black')
     cells.forEach((val, i) => {
-        doc.text(String(val), cx[i] + 3, TY + HDR_H + 6, {
+        doc.text(String(val), cx[i] + 3, TY + HDR_H + 5, {
             width: COL_W[i] - 6,
             align: i === 4 ? 'right' : 'left',
             lineBreak: false
         })
     })
 
-    // ── Summary ───────────────────────────────────────────────────────────────
-    let y = TY + HDR_H + ROW_H + 12
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('black')
-       .text('Nbre Virement : 1', MARGIN, y)
-    y += 15
-    doc.text(`TOTAL : ${bankName} ${amountStr} ****`, MARGIN, y)
+    // ── Summary ───────────────────────────────────────────────────────────
+    y = TY + HDR_H + ROW_H + 14
 
-    // ── Separator line ────────────────────────────────────────────────────────
-    y += 22
-    doc.moveTo(MARGIN, y).lineTo(MARGIN + W, y).stroke('black')
-    y += 8
+    // "Nbre Virement : 1"  — bold italic, visually centred below table
+    doc.font('Helvetica-BoldOblique').fontSize(10).fillColor('black')
+       .text('Nbre Virement :  1', 40, y, { width: W, align: 'center' })
 
-    // ── Amount in words ───────────────────────────────────────────────────────
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('black')
+    // TOTAL line: label + bank on the left; amount bold on the right
+    y += 18
+    doc.font('Helvetica').fontSize(10).fillColor('black')
+       .text('TOTAL :  ' + bankName, 190, y)
+    doc.font('Helvetica-Bold').fontSize(10)
+       .text(amountStr + '  ****', MARGIN, y, { width: W, align: 'right' })
+
+    // ── Separator ─────────────────────────────────────────────────────────
+    y += 24
+    doc.moveTo(MARGIN, y).lineTo(MARGIN + W, y).lineWidth(0.5).stroke('black')
+    y += 10
+
+    // ── Amount in words ───────────────────────────────────────────────────
+    doc.font('Helvetica').fontSize(10).fillColor('black')
        .text('Montant en toutes lettres :', MARGIN, y)
-    y += 15
-    doc.font('Helvetica').fontSize(10)
-       .text(`${amountStr} DTN ****`, MARGIN, y)
+    y += 14
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('black')
+       .text(amountWords + '****', MARGIN, y)
 
-    // ── Separator line ────────────────────────────────────────────────────────
+    // ── Separator ─────────────────────────────────────────────────────────
     y += 22
-    doc.moveTo(MARGIN, y).lineTo(MARGIN + W, y).stroke('black')
-    y += 15
+    //doc.moveTo(MARGIN, y).lineTo(MARGIN + W, y).lineWidth(0.5).stroke('black')
+    y += 12
 
-    // ── Salutation ────────────────────────────────────────────────────────────
+    // ── Salutation ────────────────────────────────────────────────────────
     doc.font('Helvetica').fontSize(10)
-       .text('Veuillez agreer, Monsieur, nos meilleures salutations.', MARGIN, y)
+       .text('Veuillez agréer, Monsieur, nos meilleures salutations.', MARGIN, y)
 
-    // ── Signature ────────────────────────────────────────────────────────────
-    doc.text('Signature', MARGIN, y + 80, { width: W, align: 'right' })
+    // ── Signature (large bold, right-aligned) ─────────────────────────────
+    doc.font('Helvetica-Bold').fontSize(18)
+       .text('Signature', MARGIN, y + 70, { width: W, align: 'right' })
 }
 
 // ── Register PDF download route BEFORE OData middleware ───────────────────
