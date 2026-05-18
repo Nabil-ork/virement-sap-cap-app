@@ -27,7 +27,7 @@
                     return Controller.extend("PreviewController", {
                         onInit: function () {
 
-                            const data = {"Services":[{"ServiceName":"virementSrv","DetailsURL":"./service/virement/","Metadata":"./service/virement/$metadata","Entities":[{"Name":"JournalEntryPrint","URL":"./service/virement/JournalEntryPrint","FioriURL":"$fiori-preview/virementSrv/JournalEntryPrint#preview-app"}],"EntitiesCount":1}]}
+                            const data = {"Services":[]}
                             this.getView().setModel(new JSONModel(data));
                         }
                     });

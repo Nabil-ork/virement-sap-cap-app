@@ -39,7 +39,7 @@
                 </core:HTML>
             </l:BlockLayoutCell>
             <l:BlockLayoutCell>
-                <Title titleStyle="H3" text="Services (1)"/>
+                <Title titleStyle="H3" text="Services (0)"/>
                 <core:HTML 
                     content='&lt;hr class=&quot;servicesSeparator&quot;&gt;'>
                 </core:HTML>
@@ -50,7 +50,7 @@
                     enableColumnReordering="false"
                     columnHeaderVisible="false"
                     ariaLabelledBy="title"
-                    visibleRowCount="1"
+                    visibleRowCount="0"
                     class="transparentTable parentTable">
                     <table:columns>
                         <table:Column>
